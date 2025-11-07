@@ -1,5 +1,3 @@
-# model.py
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -32,10 +30,9 @@ class BasicBlock(nn.Module):
 
 class DashNet(nn.Module):
     """
-    DashNet: residual convolutional network with global avg pool.
-    Produces logits shaped:
-     - (N, 1) when num_classes == 2 (compatible dengan BCEWithLogitsLoss + labels (N,1))
-     - (N, C) when num_classes > 2 (compatible dengan CrossEntropyLoss + labels (N,))
+    DashNet: light residual network with global avg pool.
+    - Returns (N,1) when num_classes == 2 (compatible with BCEWithLogitsLoss + labels shaped (N,1))
+    - Returns (N,C) when num_classes > 2 (compatible with CrossEntropyLoss + labels shaped (N,))
     """
     def __init__(self, in_channels=1, num_classes=2, block=BasicBlock, layers=(2,2,2), base_planes=32):
         super().__init__()
@@ -45,7 +42,6 @@ class DashNet(nn.Module):
         self.bn1 = nn.BatchNorm2d(base_planes)
         self.relu = nn.ReLU(inplace=True)
 
-        # layer groups
         self.layer1 = self._make_layer(block, base_planes, base_planes, layers[0], stride=1)
         self.layer2 = self._make_layer(block, base_planes, base_planes*2, layers[1], stride=2)
         self.layer3 = self._make_layer(block, base_planes*2, base_planes*4, layers[2], stride=2)
@@ -54,7 +50,6 @@ class DashNet(nn.Module):
         out_features = base_planes * 4
         self.fc = nn.Linear(out_features, 1 if num_classes == 2 else num_classes)
 
-        # init
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
@@ -87,22 +82,16 @@ class DashNet(nn.Module):
 
         x = self.global_pool(x)        # (N, C, 1, 1)
         x = torch.flatten(x, 1)       # (N, C)
-        x = self.fc(x)                # (N,1) atau (N,C)
+        x = self.fc(x)                # (N,1) or (N,C)
         return x
 
-# --- Bagian untuk pengujian ---
+# alias / convenience
+ResNet = DashNet
+
 if __name__ == '__main__':
     NUM_CLASSES = 2
     IN_CHANNELS = 1
-
-    print("--- Menguji Model 'DashNet' ---")
     model = DashNet(in_channels=IN_CHANNELS, num_classes=NUM_CLASSES)
-    print("Arsitektur Model:")
     print(model)
-
-    dummy_input = torch.randn(16, IN_CHANNELS, 28, 28)
-    output = model(dummy_input)
-
-    print(f"\nUkuran input: {dummy_input.shape}")
-    print(f"Ukuran output: {output.shape}")
-    print("Pengujian model 'DashNet' berhasil.")
+    dummy = torch.randn(4, IN_CHANNELS, 28, 28)
+    print("output shape:", model(dummy).shape)

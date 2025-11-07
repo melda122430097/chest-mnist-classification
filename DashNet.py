@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from datareader import get_data_loaders, NEW_CLASS_NAMES
-from D121Net import ResNetSmall as E
+from model import DashNet
 import matplotlib.pyplot as plt
 from utils import plot_training_history, visualize_random_val_predictions
 
@@ -21,7 +21,7 @@ def train():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     # 2. Inisialisasi Model
-    model = E(in_channels=in_channels, num_classes=num_classes).to(device)
+    model = DashNet(in_channels=in_channels, num_classes=num_classes).to(device)
     print(model)
     
     # 3. Mendefinisikan Loss Function dan Optimizer
