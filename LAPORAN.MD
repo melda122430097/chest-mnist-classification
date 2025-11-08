@@ -1,4 +1,4 @@
-1. PENDAHULUAN
+# 1. PENDAHULUAN
 
 Perkembangan teknologi kecerdasan buatan (Artificial Intelligence/AI) telah memberikan dampak signifikan dalam bidang kesehatan, khususnya pada analisis citra medis. Salah satu metode yang paling berkembang adalah Deep Learning, yang memungkinkan komputer mempelajari pola-pola kompleks pada gambar melalui jaringan saraf dalam (deep neural networks). Teknologi ini sangat membantu dalam proses diagnostik, terutama pada penyakit-penyakit kritis yang memerlukan identifikasi cepat dan akurat.
 
@@ -8,7 +8,7 @@ Untuk membantu proses deteksi otomatis kedua penyakit tersebut, penelitian ini m
 
 Penelitian ini tidak hanya membahas pengolahan data, tetapi juga membandingkan tiga arsitektur model, yaitu SimpleCNN, ResNet, dan DenseNet, untuk mengetahui model yang memberikan kinerja terbaik dalam mengenali kedua penyakit tersebut.
 
-2. TINJAUAN TEORI
+# 2. TINJAUAN TEORI
 
 2.1 Citra X-Ray Dada
 
@@ -27,7 +27,7 @@ Pneumothorax adalah keadaan keluarnya udara ke dalam rongga pleura sehingga meny
 Deep Learning, terutama Convolutional Neural Network (CNN), digunakan untuk menganalisis citra karena kemampuannya mengenali pola visual seperti tekstur, kontur, dan struktur spasial.
 
 
-3. PENGOLAHAN DATA
+# 3. PENGOLAHAN DATA
 
 3.1 Sumber Data
 
@@ -46,8 +46,8 @@ Label	Kondisi	Keterangan
 Karena dataset bersifat multi-label, maka hanya dipilih citra yang memiliki satu penyakit saja. Hal ini dilakukan untuk:
 
 1) Menghindari ambiguitas pola visual
-2)Memastikan label benar-benar mencerminkan kondisi pada citra
-3)Meningkatkan akurasi proses pembelajaran model
+2) Memastikan label benar-benar mencerminkan kondisi pada citra
+3) Meningkatkan akurasi proses pembelajaran model
 
 3.4 Transformasi dan Normalisasi
 
@@ -61,7 +61,7 @@ Dataset dibagi menjadi:
 2)Validation Test untuk menguji generalisasi model
 
 
-4. PELATIHAN MODEL DAN ANALISIS PERFORMA**
+# 4. PELATIHAN MODEL DAN ANALISIS PERFORMA**
 
 4.1 Arsitektur yang Dibandingkan
 1) SimpleCNN
@@ -100,6 +100,6 @@ DenseNet unggul karena:
 → Lebih dalam, tetapi tidak boros memori.
 - Sehingga DenseNet mampu membedakan kedua penyakit dengan akurasi tertinggi.
 
-5. KESIMPULAN
+# 5. KESIMPULAN
 
 Dataset ChestMNIST telah berhasil diproses menjadi dataset klasifikasi biner yang bersih, terstruktur, dan sesuai dengan tujuan penelitian, yaitu membedakan kondisi Cardiomegaly dan Pneumothorax secara spesifik tanpa adanya ambiguitas label. Hasil perbandingan terhadap beberapa arsitektur model menunjukkan bahwa kompleksitas struktur jaringan saraf memiliki pengaruh langsung terhadap kualitas performa klasifikasi. Model SimpleCNN, yang memiliki arsitektur relatif sederhana, cenderung mengalami underfitting karena kapasitas representasinya terbatas sehingga kurang mampu menangkap pola visual halus pada citra X-ray dada. Sementara itu, ResNet menunjukkan peningkatan performa melalui mekanisme skip connection yang membuat proses pembelajaran lebih stabil dan akurat dibandingkan SimpleCNN. Namun, hasil terbaik diperoleh dari model DenseNet, yang mampu memanfaatkan informasi fitur secara lebih maksimal melalui konektivitas antar-layer yang padat dan terarah. Arsitektur ini memungkinkan aliran gradien yang lebih stabil serta pelestarian detail fitur pada setiap tahap pemrosesan, sehingga DenseNet mampu mencapai akurasi tertinggi dalam mendeteksi Cardiomegaly dan Pneumothorax dibandingkan model-model lainnya.
