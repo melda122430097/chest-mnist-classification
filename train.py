@@ -1,34 +1,29 @@
-# train.py
-
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from datareader import get_data_loaders, NEW_CLASS_NAMES
-from D121Net import ResNetSmall as E
+from model import SimpleCNN
 import matplotlib.pyplot as plt
 from utils import plot_training_history, visualize_random_val_predictions
 
 # --- Hyperparameter ---
-EPOCHS = 16
+EPOCHS = 20
 BATCH_SIZE = 16
-LEARNING_RATE = 0.001
+LEARNING_RATE = 0.0003
+
+#Menampilkan plot riwayat training dan validasi setelah training selesai.
 
 def train():
     # 1. Memuat Data
     train_loader, val_loader, num_classes, in_channels = get_data_loaders(BATCH_SIZE)
     
-    # Device
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    
     # 2. Inisialisasi Model
-    model = E(in_channels=in_channels, num_classes=num_classes).to(device)
+    model = SimpleCNN(in_channels=in_channels, num_classes=num_classes)
     print(model)
     
     # 3. Mendefinisikan Loss Function dan Optimizer
-    if num_classes == 2:
-        criterion = nn.BCEWithLogitsLoss()
-    else:
-        criterion = nn.CrossEntropyLoss()
+    # Gunakan BCEWithLogitsLoss untuk klasifikasi biner. Ini lebih stabil secara numerik.
+    criterion = nn.BCEWithLogitsLoss()
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
     
     # Inisialisasi list untuk menyimpan history
@@ -47,18 +42,12 @@ def train():
         train_total = 0
         
         for images, labels in train_loader:
-            images = images.to(device)
-            
-            if num_classes == 2:
-                # pastikan labels shape (N,1) dan float untuk BCEWithLogitsLoss
-                labels = labels.view(-1, 1).float().to(device)
-            else:
-                labels = labels.long().to(device)
+            images = images
+            # Ubah tipe data label menjadi float untuk BCEWithLogitsLoss
+            labels = labels.float()
             
             outputs = model(images)
-            
-            # Loss
-            loss = criterion(outputs, labels)
+            loss = criterion(outputs, labels) # Loss dihitung antara output tunggal dan label
             
             optimizer.zero_grad()
             loss.backward()
@@ -67,18 +56,12 @@ def train():
             running_loss += loss.item()
             
             # Hitung training accuracy
-            if num_classes == 2:
-                probs = torch.sigmoid(outputs)
-                predicted = (probs > 0.5).float()
-                train_total += labels.size(0)
-                train_correct += (predicted == labels).sum().item()
-            else:
-                _, predicted = outputs.max(1)
-                train_total += labels.size(0)
-                train_correct += (predicted == labels).sum().item()
+            predicted = (outputs > 0).float()
+            train_total += labels.size(0)
+            train_correct += (predicted == labels).sum().item()
         
-        avg_train_loss = running_loss / max(1, len(train_loader))
-        train_accuracy = 100 * train_correct / max(1, train_total)
+        avg_train_loss = running_loss / len(train_loader)
+        train_accuracy = 100 * train_correct / train_total
         
         # --- Fase Validasi ---
         model.eval()
@@ -88,29 +71,19 @@ def train():
         
         with torch.no_grad():
             for images, labels in val_loader:
-                images = images.to(device)
-                
-                if num_classes == 2:
-                    labels = labels.view(-1, 1).float().to(device)
-                else:
-                    labels = labels.long().to(device)
+                images = images
+                labels = labels.float()
                 
                 outputs = model(images)
                 val_loss = criterion(outputs, labels)
                 val_running_loss += val_loss.item()
                 
-                if num_classes == 2:
-                    probs = torch.sigmoid(outputs)
-                    predicted = (probs > 0.5).float()
-                    val_total += labels.size(0)
-                    val_correct += (predicted == labels).sum().item()
-                else:
-                    _, predicted = outputs.max(1)
-                    val_total += labels.size(0)
-                    val_correct += (predicted == labels).sum().item()
+                predicted = (outputs > 0).float()
+                val_total += labels.size(0)
+                val_correct += (predicted == labels).sum().item()
         
-        avg_val_loss = val_running_loss / max(1, len(val_loader))
-        val_accuracy = 100 * val_correct / max(1, val_total)
+        avg_val_loss = val_running_loss / len(val_loader)
+        val_accuracy = 100 * val_correct / val_total
         
         # Simpan history
         train_losses_history.append(avg_train_loss)
@@ -133,3 +106,4 @@ def train():
 
 if __name__ == '__main__':
     train()
+    

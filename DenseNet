@@ -1,0 +1,200 @@
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from datareader import get_data_loaders, NEW_CLASS_NAMES
+from torchvision import models  # Menggunakan DenseNet dari torchvision
+import matplotlib.pyplot as plt
+from utils import plot_training_history, visualize_random_val_predictions
+
+# --- Hyperparameter ---
+EPOCHS = 20
+BATCH_SIZE = 16
+LEARNING_RATE = 0.001
+
+# Menampilkan plot riwayat training dan validasi setelah training selesai.
+
+class DenseNetWrapper(nn.Module):
+    """
+    Wrap torchvision.densenet so:
+    - first conv is adapted for small inputs (3x3, stride=1) to avoid aggressive downsampling
+    - initial pool is disabled
+    - for binary classification returns shape (N,) logits (compatible with existing train.py)
+    """
+    def __init__(self, base_model: nn.Module, num_classes: int, in_channels: int):
+        super().__init__()
+        self.base = base_model
+        self.num_classes = num_classes
+        self.in_channels = in_channels
+
+    def forward(self, x):
+        out = self.base(x)  # torchvision DenseNet returns (N,1) for classifier with out_features=1
+        if self.num_classes == 2:
+            return out.view(-1)
+        return out
+
+def train():
+    # 1. Memuat Data
+    train_loader, val_loader, num_classes, in_channels = get_data_loaders(BATCH_SIZE)
+    
+    # 2. Inisialisasi Model
+    model = models.densenet121(pretrained=True)  # Menggunakan DenseNet-121 dari torchvision
+    
+    # Modifikasi first conv agar cocok dengan in_channels dan input kecil (gunakan 3x3, stride=1)
+    # Ambil bobot awal jika pretrained True
+    orig_conv = model.features.conv0  # torchvison name
+    orig_w = orig_conv.weight.data.clone()  # (out_ch, 3, k, k)
+    out_ch = orig_w.size(0)
+
+    # buat conv baru 3x3 stride1 padding1
+    new_conv = nn.Conv2d(in_channels, out_ch, kernel_size=3, stride=1, padding=1, bias=False)
+
+    if in_channels == 1:
+        # ambil central 3x3 jika kernel 7x7, lalu rata-rata across RGB -> 1 channel
+        if orig_w.shape[2] >= 3:
+            c = orig_w.shape[2]
+            start = (c - 3) // 2
+            w3 = orig_w[:, :, start:start+3, start:start+3]
+        else:
+            w3 = orig_w
+        new_conv.weight.data.copy_(w3.mean(dim=1, keepdim=True))
+    else:
+        # jika in_channels == 3, crop central 3x3; jika >3 atau other, repeat/trim channels
+        if in_channels == 3:
+            if orig_w.shape[2] >= 3:
+                c = orig_w.shape[2]
+                start = (c - 3) // 2
+                w3 = orig_w[:, :, start:start+3, start:start+3].contiguous()
+                new_conv.weight.data.copy_(w3)
+            else:
+                new_conv.weight.data.copy_(orig_w)
+        else:
+            # repeat RGB weights then trim to needed channels
+            if orig_w.shape[2] >= 3:
+                c = orig_w.shape[2]
+                start = (c - 3) // 2
+                w3 = orig_w[:, :, start:start+3, start:start+3].contiguous()
+            else:
+                w3 = orig_w
+            reps = (in_channels + 2) // 3
+            new_w = w3.repeat(1, reps, 1, 1)[:, :in_channels, :, :].contiguous()
+            new_conv.weight.data.copy_(new_w)
+
+    model.features.conv0 = new_conv
+
+    # Nonaktifkan initial pooling yang membuat spatial terlalu kecil untuk input 28x28
+    if hasattr(model.features, "pool0"):
+        model.features.pool0 = nn.Identity()
+    else:
+        # beberapa versi torchvision menggunakan features[3] as pool0; try safe replacement
+        try:
+            model.features[3] = nn.Identity()
+        except Exception:
+            pass
+
+    # Ganti classifier untuk sesuai dengan jumlah kelas
+    in_features = model.classifier.in_features
+    if num_classes == 2:
+        model.classifier = nn.Linear(in_features, 1)  # Binary classification (BCEWithLogitsLoss)
+    else:
+        model.classifier = nn.Linear(in_features, num_classes)  # Multi-class classification
+
+    # Wrap so binary returns shape (N,) matching existing train.py expectation
+    model = DenseNetWrapper(model, num_classes=num_classes, in_channels=in_channels)
+
+    print(model)
+    
+    # 3. Mendefinisikan Loss Function dan Optimizer
+    if num_classes == 2:
+        criterion = nn.BCEWithLogitsLoss()
+    else:
+        criterion = nn.CrossEntropyLoss()  # Untuk multi-class classification
+    
+    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    
+    # Inisialisasi list untuk menyimpan history
+    train_losses_history = []
+    val_losses_history = []
+    train_accs_history = []
+    val_accs_history = []
+    
+    print("\n--- Memulai Training ---")
+    
+    # 4. Training Loop
+    for epoch in range(EPOCHS):
+        model.train()
+        running_loss = 0.0
+        train_correct = 0
+        train_total = 0
+        
+        for images, labels in train_loader:
+            images = images
+            # Ubah tipe data label menjadi float dan flatten ke shape (N,) untuk BCEWithLogitsLoss
+            labels = labels.view(-1).float() if num_classes == 2 else labels.long()
+            
+            outputs = model(images)
+            loss = criterion(outputs, labels)  # Loss dihitung antara output tunggal dan label
+            
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            
+            running_loss += loss.item()
+            
+            # Hitung training accuracy
+            if num_classes == 2:
+                predicted = (torch.sigmoid(outputs) > 0.5).float()
+            else:
+                predicted = outputs.max(1)[1]
+            train_total += labels.size(0)
+            train_correct += (predicted == labels).sum().item()
+        
+        avg_train_loss = running_loss / len(train_loader)
+        train_accuracy = 100 * train_correct / train_total
+        
+        # --- Fase Validasi ---
+        model.eval()
+        val_correct = 0
+        val_total = 0
+        val_running_loss = 0.0
+        
+        with torch.no_grad():
+            for images, labels in val_loader:
+                images = images
+                # Ubah tipe data label menjadi float dan flatten ke shape (N,) untuk BCEWithLogitsLoss
+                labels = labels.view(-1).float() if num_classes == 2 else labels.long()
+                
+                outputs = model(images)
+                val_loss = criterion(outputs, labels)
+                val_running_loss += val_loss.item()
+                
+                if num_classes == 2:
+                    predicted = (torch.sigmoid(outputs) > 0.5).float()
+                else:
+                    predicted = outputs.max(1)[1]
+                val_total += labels.size(0)
+                val_correct += (predicted == labels).sum().item()
+        
+        avg_val_loss = val_running_loss / len(val_loader)
+        val_accuracy = 100 * val_correct / val_total
+        
+        # Simpan history
+        train_losses_history.append(avg_train_loss)
+        val_losses_history.append(avg_val_loss)
+        train_accs_history.append(train_accuracy)
+        val_accs_history.append(val_accuracy)
+        
+        print(f"Epoch [{epoch+1}/{EPOCHS}] | "
+              f"Train Loss: {avg_train_loss:.4f} | Train Acc: {train_accuracy:.2f}% | "
+              f"Val Loss: {avg_val_loss:.4f} | Val Acc: {val_accuracy:.2f}%")
+
+    print("--- Training Selesai ---")
+    
+    # Tampilkan plot
+    plot_training_history(train_losses_history, val_losses_history, 
+                         train_accs_history, val_accs_history)
+
+    # Visualisasi prediksi pada 10 gambar random dari validation set
+    visualize_random_val_predictions(model, val_loader, num_classes, count=10)
+
+if __name__ == '__main__':
+    train()
